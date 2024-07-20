@@ -1,10 +1,18 @@
 package com.example.secretservice_20220038
 
+import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
 import android.media.MediaPlayer
 import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -20,17 +28,16 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.Button
-import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -38,35 +45,56 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.secretservice_20220038.models.Incident
 import io.realm.kotlin.Realm
 import io.realm.kotlin.ext.query
+import android.Manifest.permission.READ_EXTERNAL_STORAGE
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.OutlinedIconButton
 
 @Composable
 fun HomeScreen(realm: Realm) {
     val incidents = realm.query<Incident>().find()
     var selectedIncident by remember { mutableStateOf<Incident?>(null) }
-    var showAddIncidentScreen by remember { mutableStateOf(false) }
     val context = LocalContext.current
-
-    if (showAddIncidentScreen) {
-        AddIncidentScreen(
-            onSave = { incident ->
-                realm.writeBlocking {
-                    copyToRealm(incident)
+    var hasStoragePermission by remember { mutableStateOf(false) }
+    val launcher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted: Boolean ->
+        hasStoragePermission = isGranted
+    }
+    val lifecycleOwner= LocalLifecycleOwner.current
+    LaunchedEffect(key1 = Unit) {
+        lifecycleOwner.lifecycle.addObserver(
+            LifecycleEventObserver { _, event ->
+                if (event == Lifecycle.Event.ON_RESUME) {
+                    if (ContextCompat.checkSelfPermission(
+                            context,
+                            READ_EXTERNAL_STORAGE
+                        ) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        launcher.launch(READ_EXTERNAL_STORAGE)
+                    } else {
+                        hasStoragePermission = true
+                    }
                 }
-                showAddIncidentScreen = false
-            },
-            onCancel = { showAddIncidentScreen = false }
+            }
         )
-    } else {
+    }
+
+    if (hasStoragePermission) {
         Scaffold(
             topBar = {
                 Text(
@@ -74,11 +102,6 @@ fun HomeScreen(realm: Realm) {
                     style = MaterialTheme.typography.headlineLarge,
                     modifier = Modifier.padding(16.dp)
                 )
-            },
-            floatingActionButton = {
-                FloatingActionButton(onClick = { showAddIncidentScreen = true }) {
-                    Icon(imageVector = Icons.Default.Add, contentDescription = "Add incident")
-                }
             }
         ) { padding ->
             when {
@@ -110,22 +133,39 @@ fun HomeScreen(realm: Realm) {
                 }
             }
         }
-    }
 
-    selectedIncident?.let { incident ->
-        IncidentDialog(
-            incident,
-            onDelete = {
-                realm.writeBlocking {
-                    val liveIncident = findLatest(incident)
-                    if (liveIncident != null) {
-                        delete(liveIncident)
+
+        selectedIncident?.let { incident ->
+            IncidentDialog(
+                incident,
+                onDelete = {
+                    realm.writeBlocking {
+                        val liveIncident = findLatest(incident)
+                        if (liveIncident != null) {
+                            delete(liveIncident)
+                        }
                     }
-                }
-                selectedIncident = null
-            },
-            onDismiss = { selectedIncident = null }
-        )
+                    selectedIncident = null
+                },
+                onDismiss = { selectedIncident = null }
+            )
+        }
+    } else {
+        SideEffect {
+            launcher.launch(READ_EXTERNAL_STORAGE)
+        }
+        Surface {
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.Center,
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    "Storage permission is required to access audio recordings.",
+                    textAlign = TextAlign.Center
+                )
+            }
+        }
     }
 }
 
@@ -173,6 +213,18 @@ fun IncidentCard(incident: Incident, onClick: () -> Unit) {
 fun IncidentDialog(incident: Incident, onDelete: () -> Unit, onDismiss: () -> Unit) {
     val context = LocalContext.current
     var mediaPlayer by remember { mutableStateOf<MediaPlayer?>(null) }
+    var isPlaying by remember { mutableStateOf(false) }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "infiniteTransition")
+    val scale by infiniteTransition.animateFloat(
+        label = "infiniteTransition",
+        initialValue = 1f,
+        targetValue = 1.2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse
+        )
+    )
 
     Dialog(onDismissRequest = {
         mediaPlayer?.release()
@@ -196,7 +248,9 @@ fun IncidentDialog(incident: Incident, onDelete: () -> Unit, onDismiss: () -> Un
                 }
                 Spacer(modifier = Modifier.height(16.dp))
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(16.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
                 ) {
                     Text(
                         text = incident.title,
@@ -222,15 +276,27 @@ fun IncidentDialog(incident: Incident, onDelete: () -> Unit, onDismiss: () -> Un
                             .padding(16.dp),
                         horizontalArrangement = Arrangement.Center
                     ) {
-                        Button(onClick = {
-                            mediaPlayer?.release()
-                            mediaPlayer = MediaPlayer().apply {
-                                setDataSource(context, Uri.parse(audioPath))
-                                prepare()
-                                start()
-                            }
-                        }) {
-                            Text("Play Audio")
+                        Button(
+                            onClick = {
+                                if (isPlaying) {
+                                    mediaPlayer?.release()
+                                    isPlaying = false
+                                } else {
+                                    mediaPlayer = MediaPlayer().apply {
+                                        setDataSource(context, Uri.parse(audioPath))
+                                        prepare()
+                                        start()
+                                        setOnCompletionListener {
+                                            isPlaying = false
+                                        }
+                                    }
+                                    isPlaying = true
+                                }
+                            },
+                            colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.secondary),
+                            modifier = Modifier.scale(if (isPlaying) scale else 1f)
+                        ) {
+                            Text(if (isPlaying) "Stop Audio" else "Play Audio")
                         }
                     }
                 }
@@ -241,10 +307,9 @@ fun IncidentDialog(incident: Incident, onDelete: () -> Unit, onDismiss: () -> Un
                     horizontalArrangement = Arrangement.End,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(
+                    OutlinedIconButton(
                         modifier = Modifier
                             .clip(CircleShape)
-                            .background(MaterialTheme.colorScheme.error)
                             .size(40.dp),
                         onClick = {
                             mediaPlayer?.release()

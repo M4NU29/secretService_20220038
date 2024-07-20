@@ -1,4 +1,16 @@
 <resources>
     <string name="app_name">secretService_20220038</string>
     <string name="title">Incidents</string>
+
+    <string name="navbar_home">Home</string>
+    <string name="navbar_add">Add</string>
+    <string name="navbar_profile">Profile</string>
+
+    <string name="title_add">Add incident</string>
+    <string name="title_profile">Profile</string>
+
+    <string name="my_name">Emmanuel Espinal</string>
+    <string name="my_id">2022–0038</string>
+    <string name="message">“Cybersecurity is not just about defending against attacks; it’s about building resilience. It’s about understanding that breaches will happen and having a plan in place to minimize damage, recover quickly, and learn from the experience. The goal is to create a system that can absorb and adapt to attacks rather than one that merely reacts to them.”</string>
+    <string name="author">—Bruce Schneier</string>
 </resources>

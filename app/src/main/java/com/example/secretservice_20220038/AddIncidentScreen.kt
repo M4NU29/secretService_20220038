@@ -3,6 +3,7 @@ package com.example.secretservice_20220038
 import android.app.DatePickerDialog
 import android.graphics.BitmapFactory
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
@@ -10,7 +11,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -23,7 +23,8 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -37,6 +38,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.example.secretservice_20220038.models.Incident
 import java.text.SimpleDateFormat
@@ -45,12 +48,22 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun AddIncidentScreen(onSave: (Incident) -> Unit, onCancel: () -> Unit) {
+fun AddIncidentScreen(onSave: (Incident) -> Unit) {
     var title by remember { mutableStateOf("") }
     var date by remember { mutableStateOf(Date()) }
     var description by remember { mutableStateOf("") }
     var image by remember { mutableStateOf<ByteArray?>(null) }
     var audioPath by remember { mutableStateOf<String?>(null) }
+    var audioFileName by remember { mutableStateOf<String?>(null) }
+
+    fun clearFields() {
+        title = ""
+        date = Date()
+        description = ""
+        image = null
+        audioPath = null
+        audioFileName = null
+    }
 
     val context = LocalContext.current
 
@@ -81,12 +94,25 @@ fun AddIncidentScreen(onSave: (Incident) -> Unit, onCancel: () -> Unit) {
     val audioPickerLauncher = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri: Uri? ->
         uri?.let {
             audioPath = it.toString()
+            val cursor = context.contentResolver.query(it, null, null, null, null)
+            cursor?.use { c ->
+                val nameIndex = c.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                if (c.moveToFirst()) {
+                    audioFileName = c.getString(nameIndex)
+                }
+            }
         }
     }
 
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-    ) {
+    Scaffold(
+        topBar = {
+            Text(
+                text = stringResource(R.string.title_add),
+                style = MaterialTheme.typography.headlineLarge,
+                modifier = Modifier.padding(16.dp)
+            )
+        }
+    ) { padding ->
         Column(
             modifier = Modifier
                 .padding(16.dp)
@@ -94,17 +120,11 @@ fun AddIncidentScreen(onSave: (Incident) -> Unit, onCancel: () -> Unit) {
                 .fillMaxWidth(),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = "Add Incident",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(bottom = 16.dp)
-            )
-
             TextField(
                 value = title,
                 onValueChange = { title = it },
                 label = { Text("Title") },
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.fillMaxWidth().padding(padding)
             )
             Spacer(modifier = Modifier.height(8.dp))
 
@@ -121,13 +141,14 @@ fun AddIncidentScreen(onSave: (Incident) -> Unit, onCancel: () -> Unit) {
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "Date: ${dateFormat.format(date)}",
+                    text = dateFormat.format(date),
                     style = MaterialTheme.typography.bodyLarge,
                     modifier = Modifier.weight(1f)
                 )
                 Spacer(modifier = Modifier.width(16.dp))
                 Button(
                     onClick = { datePickerDialog.show() },
+                    colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.secondary),
                     modifier = Modifier.wrapContentWidth()
                 ) {
                     Text("Select date")
@@ -137,6 +158,7 @@ fun AddIncidentScreen(onSave: (Incident) -> Unit, onCancel: () -> Unit) {
 
             Button(
                 onClick = { imagePickerLauncher.launch("image/*") },
+                colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.secondary),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Select image")
@@ -157,9 +179,19 @@ fun AddIncidentScreen(onSave: (Incident) -> Unit, onCancel: () -> Unit) {
 
             Button(
                 onClick = { audioPickerLauncher.launch("audio/*") },
+                colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.secondary),
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Select audio")
+            }
+            audioFileName?.let {
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.bodyMedium,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -178,16 +210,15 @@ fun AddIncidentScreen(onSave: (Incident) -> Unit, onCancel: () -> Unit) {
                                 this.image = image
                                 this.audioPath = audioPath
                             })
+                            clearFields()
                         }
                     },
-                    colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.secondary),
                     modifier = Modifier.padding(end = 8.dp)
                 ) {
                     Text("Save")
                 }
-                Button(
-                    onClick = onCancel,
-                    colors = ButtonDefaults.buttonColors(MaterialTheme.colorScheme.error),
+                OutlinedButton(
+                    onClick = { clearFields() },
                     modifier = Modifier.padding(end = 8.dp)
                 ) {
                     Text("Cancel")
